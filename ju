@@ -1,0 +1,161 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+use HTML::TreeBuilder;
+use DateTime;
+use DateTime::Format::Strptime;
+use Getopt::Long;
+use File::Basename;
+
+# Configuration
+my $journal_file = "$ENV{HOME}/mpw/journal.html";  # Update this path
+my $date_format = '%Y-%m-%d';
+
+# Command line options
+my $date = DateTime->now->strftime($date_format);
+my @entries;
+
+GetOptions(
+    "date|d=s" => \$date,
+    "entry|e=s" => \@entries,
+);
+
+# If no entries provided, show usage
+if (!@entries) {
+    print "Usage: ju --entry|-e \"entry text\" [--entry|-e \"another entry\"] [--date|-d YYYY-MM-DD]\n";
+    exit 1;
+}
+
+# Check if file exists
+if (!-e $journal_file) {
+    die "Journal file not found: $journal_file\n";
+}
+
+# Parse HTML
+my $tree = HTML::TreeBuilder->new;
+$tree->warn(1);  # Enable warnings
+$tree->ignore_unknown(0);
+$tree->parse_file($journal_file);
+
+# Debug information
+print "Parsed HTML file: $journal_file\n";
+
+# Find main element first
+my $main = $tree->look_down('_tag', 'main');
+if (!$main) {
+    die "Could not find <main> element in $journal_file\n";
+}
+
+# Then find article inside main
+my $article = $main->look_down('_tag', 'article');
+if (!$article) {
+    die "Could not find <article> element inside <main> in $journal_file\n";
+}
+
+# Find the ul inside the article
+my $ul = $article->look_down('_tag', 'ul');
+if (!$ul) {
+    die "Could not find <ul> element inside <article> in $journal_file\n";
+}
+
+print "Found all required HTML elements\n";
+
+# Parse the date
+my $parser = DateTime::Format::Strptime->new(pattern => $date_format);
+my $entry_date = $parser->parse_datetime($date);
+
+# Get all existing date sections
+my @date_sections = $ul->look_down('_tag', 'li');
+my $new_section_added = 0;
+
+print "Found " . scalar(@date_sections) . " existing date sections\n";
+
+# Try to find the section for the specified date
+foreach my $section (@date_sections) {
+    my $strong = $section->look_down('_tag', 'strong');
+    next unless $strong;
+    
+    my $section_date_str = $strong->as_text;
+    print "Checking section: $section_date_str\n";
+    
+    my $section_date;
+    eval {
+        $section_date = $parser->parse_datetime($section_date_str);
+    };
+    if ($@) {
+        print "Warning: Could not parse date '$section_date_str': $@\n";
+        next;
+    }
+    
+    # If this is the section for our date, add entries to it
+    if ($section_date_str eq $date) {
+        print "Found matching section for $date\n";
+        my $section_ul = $section->look_down('_tag', 'ul');
+        if (!$section_ul) {
+            print "Warning: No <ul> found in date section. Creating one.\n";
+            $section_ul = HTML::Element->new('ul');
+            $section->push_content($section_ul);
+        }
+        add_entries_to_section($section_ul, \@entries);
+        $new_section_added = 1;
+        last;
+    }
+    
+    # If our date is newer than this section, insert before this section
+    if ($entry_date > $section_date) {
+        print "Adding new section for $date before $section_date_str\n";
+        my $new_section = create_new_section($date, \@entries);
+        $section->preinsert($new_section);
+        $new_section_added = 1;
+        last;
+    }
+}
+
+# If we didn't add a section yet, it means our date is older than all existing dates
+# or there are no date sections yet, so add it at the end
+if (!$new_section_added) {
+    print "Adding new section for $date at the end\n";
+    my $new_section = create_new_section($date, \@entries);
+    $ul->push_content($new_section);
+}
+
+# Write updated content back to file
+open my $fh, '>', $journal_file or die "Cannot open $journal_file for writing: $!";
+print $fh $tree->as_HTML(undef, '  ', {});
+close $fh;
+
+print "Journal updated successfully with " . scalar(@entries) . " entries for $date.\n";
+
+$tree->delete;
+
+# Function to add entries to an existing section
+sub add_entries_to_section {
+    my ($section_ul, $entries_ref) = @_;
+    
+    foreach my $entry (@$entries_ref) {
+        my $li = HTML::Element->new('li');
+        $li->push_content($entry);
+        $section_ul->push_content($li);
+    }
+}
+
+# Function to create a new date section
+sub create_new_section {
+    my ($date_str, $entries_ref) = @_;
+    
+    my $li = HTML::Element->new('li');
+    my $strong = HTML::Element->new('strong');
+    $strong->push_content($date_str);
+    $li->push_content($strong);
+    
+    my $inner_ul = HTML::Element->new('ul');
+    foreach my $entry (@$entries_ref) {
+        my $entry_li = HTML::Element->new('li');
+        $entry_li->push_content($entry);
+        $inner_ul->push_content($entry_li);
+    }
+    
+    $li->push_content($inner_ul);
+    return $li;
+}
