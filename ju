@@ -7,6 +7,7 @@ use DateTime;
 use DateTime::Format::Strptime;
 use Getopt::Long;
 use File::Basename;
+use Cwd;
 
 # Configuration
 my $journal_file = "$ENV{HOME}/mpw/journal.html";  # Update this path
@@ -15,15 +16,26 @@ my $date_format = '%Y-%m-%d';
 # Command line options
 my $date = DateTime->now->strftime($date_format);
 my @entries;
+my $git_commit = 0;
+my $help = 0;
 
 GetOptions(
-    "date|d=s" => \$date,
-    "entry|e=s" => \@entries,
+    "date|d=s"   => \$date,
+    "entry|e=s"  => \@entries,
+    "git|g"      => \$git_commit,
+    "help|h"     => \$help,
 );
+
+# Show help
+if ($help) {
+    show_help();
+    exit 0;
+}
 
 # If no entries provided, show usage
 if (!@entries) {
-    print "Usage: ju --entry|-e \"entry text\" [--entry|-e \"another entry\"] [--date|-d YYYY-MM-DD]\n";
+    print "Usage: ju --entry|-e \"entry text\" [--entry|-e \"another entry\"] [--date|-d YYYY-MM-DD] [--git|-g] [--help|-h]\n";
+    print "Try 'ju --help' for more information.\n";
     exit 1;
 }
 
@@ -37,9 +49,6 @@ my $tree = HTML::TreeBuilder->new;
 $tree->warn(1);  # Enable warnings
 $tree->ignore_unknown(0);
 $tree->parse_file($journal_file);
-
-# Debug information
-print "Parsed HTML file: $journal_file\n";
 
 # Find main element first
 my $main = $tree->look_down('_tag', 'main');
@@ -59,8 +68,6 @@ if (!$ul) {
     die "Could not find <ul> element inside <article> in $journal_file\n";
 }
 
-print "Found all required HTML elements\n";
-
 # Parse the date
 my $parser = DateTime::Format::Strptime->new(pattern => $date_format);
 my $entry_date = $parser->parse_datetime($date);
@@ -69,15 +76,12 @@ my $entry_date = $parser->parse_datetime($date);
 my @date_sections = $ul->look_down('_tag', 'li');
 my $new_section_added = 0;
 
-print "Found " . scalar(@date_sections) . " existing date sections\n";
-
 # Try to find the section for the specified date
 foreach my $section (@date_sections) {
     my $strong = $section->look_down('_tag', 'strong');
     next unless $strong;
     
     my $section_date_str = $strong->as_text;
-    print "Checking section: $section_date_str\n";
     
     my $section_date;
     eval {
@@ -90,7 +94,6 @@ foreach my $section (@date_sections) {
     
     # If this is the section for our date, add entries to it
     if ($section_date_str eq $date) {
-        print "Found matching section for $date\n";
         my $section_ul = $section->look_down('_tag', 'ul');
         if (!$section_ul) {
             print "Warning: No <ul> found in date section. Creating one.\n";
@@ -104,7 +107,6 @@ foreach my $section (@date_sections) {
     
     # If our date is newer than this section, insert before this section
     if ($entry_date > $section_date) {
-        print "Adding new section for $date before $section_date_str\n";
         my $new_section = create_new_section($date, \@entries);
         $section->preinsert($new_section);
         $new_section_added = 1;
@@ -115,7 +117,6 @@ foreach my $section (@date_sections) {
 # If we didn't add a section yet, it means our date is older than all existing dates
 # or there are no date sections yet, so add it at the end
 if (!$new_section_added) {
-    print "Adding new section for $date at the end\n";
     my $new_section = create_new_section($date, \@entries);
     $ul->push_content($new_section);
 }
@@ -128,6 +129,36 @@ close $fh;
 print "Journal updated successfully with " . scalar(@entries) . " entries for $date.\n";
 
 $tree->delete;
+
+# Git commit if requested
+if ($git_commit) {
+    my $dir = dirname($journal_file);
+    my $current_dir = getcwd();
+    
+    # Change to the directory containing the journal file
+    chdir($dir) or die "Cannot change to directory $dir: $!";
+    
+    # Get just the filename without the path
+    my $file = basename($journal_file);
+    
+    # Execute git commands
+    my $commit_message = "journal entry for $date";
+    print "Executing git operations...\n";
+    
+    system("git add $file") == 0
+        or die "Git add failed: $?";
+    
+    system("git commit -m '$commit_message'") == 0
+        or die "Git commit failed: $?";
+    
+    system("git push") == 0
+        or die "Git push failed: $?";
+    
+    print "Git operations completed successfully.\n";
+    
+    # Change back to the original directory
+    chdir($current_dir);
+}
 
 # Function to add entries to an existing section
 sub add_entries_to_section {
@@ -158,4 +189,43 @@ sub create_new_section {
     
     $li->push_content($inner_ul);
     return $li;
+}
+
+# Function to show help
+sub show_help {
+    print <<'HELP';
+ju - Journal Update Tool
+
+USAGE:
+  ju --entry|-e "entry text" [--entry|-e "another entry"] [OPTIONS]
+
+OPTIONS:
+  -e, --entry TEXT    Add a journal entry (can be used multiple times)
+  -d, --date DATE     Specify a date for the entry (format: YYYY-MM-DD)
+                      Default: today's date
+  -g, --git           Automatically commit and push changes to git 
+  -h, --help          Show this help message
+
+EXAMPLES:
+  # Add an entry for today
+  ju --entry "fixed bug in polynomial parser"
+
+  # Add multiple entries for today
+  ju --entry "fixed bug in parser" --entry "updated documentation"
+
+  # Add an entry for a specific date
+  ju --date 2025-05-22 --entry "implemented ju script"
+
+  # Add entries and automatically commit/push to git
+  ju --entry "added new feature" --git
+
+  # Add entries for a past date and commit to git
+  ju --date 2025-05-15 --entry "worked on project" --git
+
+NOTES:
+  * Entries are added as bullet points to the journal
+  * If the specified date doesn't exist, a new section is created
+  * The git option will add, commit, and push the changes automatically
+  * New dates are added in chronological order (newest at the top)
+HELP
 }
