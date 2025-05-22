@@ -10,7 +10,7 @@ use File::Basename;
 use Cwd;
 
 # Configuration
-my $journal_file = "$ENV{HOME}/mpw/journal.html";  # Update this path
+my $journal_file = "$ENV{HOME}/mpw/journal.html";
 my $date_format = '%Y-%m-%d';
 
 # Command line options
@@ -56,7 +56,7 @@ if (!$main) {
     die "Could not find <main> element in $journal_file\n";
 }
 
-# Then find article inside main
+# Find article inside main
 my $article = $main->look_down('_tag', 'article');
 if (!$article) {
     die "Could not find <article> element inside <main> in $journal_file\n";
