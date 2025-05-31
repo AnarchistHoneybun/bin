@@ -18,12 +18,14 @@ my $date = DateTime->now->strftime($date_format);
 my @entries;
 my $git_commit = 0;
 my $help = 0;
+my $list_days;
 
 GetOptions(
     "date|d=s"   => \$date,
     "entry|e=s"  => \@entries,
     "git|g"      => \$git_commit,
     "help|h"     => \$help,
+    "list|l:i"   => \$list_days,
 );
 
 # Show help
@@ -32,9 +34,17 @@ if ($help) {
     exit 0;
 }
 
+# Handle list functionality
+if (defined $list_days) {
+    # Default to 2 days if no number specified
+    $list_days = 2 if $list_days == 0;
+    list_recent_entries($list_days);
+    exit 0;
+}
+
 # If no entries provided, show usage
 if (!@entries) {
-    print "Usage: ju --entry|-e \"entry text\" [--entry|-e \"another entry\"] [--date|-d YYYY-MM-DD] [--git|-g] [--help|-h]\n";
+    print "Usage: ju --entry|-e \"entry text\" [--entry|-e \"another entry\"] [--date|-d YYYY-MM-DD] [--git|-g] [--list|-l [days]] [--help|-h]\n";
     print "Try 'ju --help' for more information.\n";
     exit 1;
 }
@@ -160,6 +170,84 @@ if ($git_commit) {
     chdir($current_dir);
 }
 
+# Function to list recent entries
+sub list_recent_entries {
+    my ($days) = @_;
+    
+    # Check if file exists
+    if (!-e $journal_file) {
+        die "Journal file not found: $journal_file\n";
+    }
+    
+    # Parse HTML
+    my $tree = HTML::TreeBuilder->new;
+    $tree->warn(1);
+    $tree->ignore_unknown(0);
+    $tree->parse_file($journal_file);
+    
+    # Navigate to the ul containing date sections
+    my $main = $tree->look_down('_tag', 'main');
+    if (!$main) {
+        die "Could not find <main> element in $journal_file\n";
+    }
+    
+    my $article = $main->look_down('_tag', 'article');
+    if (!$article) {
+        die "Could not find <article> element inside <main> in $journal_file\n";
+    }
+    
+    my $ul = $article->look_down('_tag', 'ul');
+    if (!$ul) {
+        die "Could not find <ul> element inside <article> in $journal_file\n";
+    }
+    
+    # Get all date sections
+    my @date_sections = $ul->look_down('_tag', 'li');
+    my $parser = DateTime::Format::Strptime->new(pattern => $date_format);
+    my $today = DateTime->now->strftime($date_format);
+    my $count = 0;
+    
+    foreach my $section (@date_sections) {
+        last if $count >= $days;
+        
+        my $strong = $section->look_down('_tag', 'strong');
+        next unless $strong;
+        
+        my $section_date_str = $strong->as_text;
+        
+        # Skip if we can't parse the date
+        my $section_date;
+        eval {
+            $section_date = $parser->parse_datetime($section_date_str);
+        };
+        if ($@) {
+            next;
+        }
+        
+        # Print the date with optional "today" marker
+        print "$section_date_str";
+        if ($section_date_str eq $today) {
+            print " (today)";
+        }
+        print "\n";
+        
+        # Get the entries for this date
+        my $section_ul = $section->look_down('_tag', 'ul');
+        if ($section_ul) {
+            my @entry_lis = $section_ul->look_down('_tag', 'li');
+            foreach my $entry_li (@entry_lis) {
+                my $entry_text = $entry_li->as_text;
+                print "- $entry_text\n";
+            }
+        }
+        print "\n";
+        
+        $count++;
+    }
+    
+    $tree->delete;
+}
+
 # Function to add entries to an existing section
 sub add_entries_to_section {
     my ($section_ul, $entries_ref) = @_;
@@ -198,12 +286,15 @@ ju - Journal Update Tool
 
 USAGE:
   ju --entry|-e "entry text" [--entry|-e "another entry"] [OPTIONS]
+  ju --list|-l [days]
 
 OPTIONS:
   -e, --entry TEXT    Add a journal entry (can be used multiple times)
   -d, --date DATE     Specify a date for the entry (format: YYYY-MM-DD)
                       Default: today's date
   -g, --git           Automatically commit and push changes to git 
+  -l, --list [DAYS]   List recent entries for the specified number of days
+                      Default: 2 days if no number specified
   -h, --help          Show this help message
 
 EXAMPLES:
@@ -219,6 +310,12 @@ EXAMPLES:
   # Add entries and automatically commit/push to git
   ju --entry "added new feature" --git
 
+  # List the last 2 days of entries (default)
+  ju --list
+
+  # List the last 5 days of entries
+  ju --list 5
+
   # Add entries for a past date and commit to git
   ju --date 2025-05-15 --entry "worked on project" --git
 
@@ -227,5 +324,7 @@ NOTES:
   * If the specified date doesn't exist, a new section is created
   * The git option will add, commit, and push the changes automatically
   * New dates are added in chronological order (newest at the top)
+  * The list option shows entries in reverse chronological order
+  * If today's date appears in the list, it will be marked with "(today)"
 HELP
 }
