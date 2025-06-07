@@ -1,0 +1,217 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+use LWP::UserAgent;
+use JSON;
+use Getopt::Long;
+use File::HomeDir;
+use Term::ANSIColor qw(colored);
+
+# Configuration
+my $config_file = File::HomeDir->my_home . "/.leetcode_tracker.json";
+my $leetcode_api = "https://leetcode.com/graphql";
+
+# Command line options
+my $username_to_add;
+my $help;
+
+GetOptions(
+    'u|user=s' => \$username_to_add,
+    'h|help'   => \$help,
+) or die "Error in command line arguments\n";
+
+if ($help) {
+    print_help();
+    exit 0;
+}
+
+# Main logic
+if ($username_to_add) {
+    add_user($username_to_add);
+} else {
+    display_stats();
+}
+
+sub print_help {
+    print <<EOF;
+LeetCode Stats Tracker
+
+Usage:
+    $0              Display stats for all tracked users
+    $0 -u USERNAME  Add a new user to track
+    $0 -h           Show this help message
+
+The script stores tracked users in ~/.leetcode_tracker.json
+EOF
+}
+
+sub load_users {
+    return [] unless -f $config_file;
+    
+    open my $fh, '<', $config_file or die "Cannot read $config_file: $!";
+    my $content = do { local $/; <$fh> };
+    close $fh;
+    
+    return [] if !$content;
+    
+    my $data = eval { decode_json($content) };
+    return $data && ref($data) eq 'ARRAY' ? $data : [];
+}
+
+sub save_users {
+    my ($users) = @_;
+    
+    open my $fh, '>', $config_file or die "Cannot write to $config_file: $!";
+    print $fh encode_json($users);
+    close $fh;
+}
+
+sub fetch_user_stats {
+    my ($username) = @_;
+    
+    my $query = q{
+        query getUserProfile($username: String!) {
+            matchedUser(username: $username) {
+                username
+                submitStats: submitStatsGlobal {
+                    acSubmissionNum {
+                        difficulty
+                        count
+                        submissions
+                    }
+                }
+            }
+        }
+    };
+    
+    my $ua = LWP::UserAgent->new();
+    $ua->timeout(10);
+    $ua->agent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
+    
+    my $response = $ua->post($leetcode_api, 
+        'Content-Type' => 'application/json',
+        'User-Agent' => 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Referer' => 'https://leetcode.com/',
+        Content => encode_json({
+            query => $query,
+            variables => { username => $username }
+        })
+    );
+    
+    unless ($response->is_success) {
+        return { error => "HTTP request failed: " . $response->status_line };
+    }
+    
+    my $data = eval { decode_json($response->decoded_content) };
+    if ($@) {
+        return { error => "Failed to parse JSON response" };
+    }
+    
+    if ($data->{errors}) {
+        return { error => "GraphQL error: " . $data->{errors}[0]{message} };
+    }
+    
+    my $user_data = $data->{data}{matchedUser};
+    unless ($user_data) {
+        return { error => "User not found" };
+    }
+    
+    return { success => 1, data => $user_data };
+}
+
+sub add_user {
+    my ($username) = @_;
+    
+    print "Checking if user '$username' exists...\n";
+    
+    my $result = fetch_user_stats($username);
+    
+    if ($result->{error}) {
+        print colored("Error: $result->{error}\n", 'red');
+        exit 1;
+    }
+    
+    my $users = load_users();
+    
+    # Check if user already exists
+    for my $existing_user (@$users) {
+        if (lc($existing_user) eq lc($username)) {
+            print colored("User '$username' is already being tracked.\n", 'yellow');
+            exit 0;
+        }
+    }
+    
+    push @$users, $username;
+    save_users($users);
+    
+    print colored("Successfully added user '$username' to tracking list.\n", 'green');
+}
+
+sub display_stats {
+    my $users = load_users();
+    
+    unless (@$users) {
+        print colored("No users are being tracked yet.\n", 'yellow');
+        print "Use: $0 -u <username> to add a user\n";
+        exit 0;
+    }
+    
+    # Table header
+    printf "%-20s %4s %6s %4s %5s\n",
+        "Username",
+        colored("Easy", 'green'),
+        colored("Medium", 'yellow'), 
+        colored("Hard", 'red'),
+        colored("Total", 'bold');
+    print "-" x 45 . "\n";
+    
+    for my $username (@$users) {
+        my $result = fetch_user_stats($username);
+        
+        if ($result->{error}) {
+            printf "%-20s %s\n", $username, colored("Error: $result->{error}", 'red');
+            next;
+        }
+        
+        my $stats = parse_stats($result->{data});
+        
+        printf "%-20s %s %s %s %s\n",
+            $username,
+            colored(sprintf("%4d", $stats->{easy}), 'green'),
+            colored(sprintf("%6d", $stats->{medium}), 'yellow'),
+            colored(sprintf("%4d", $stats->{hard}), 'red'),
+            colored(sprintf("%5d", $stats->{total}), 'bold');
+    }
+    
+    print "\n";
+}
+
+sub parse_stats {
+    my ($user_data) = @_;
+    
+    my %stats = (easy => 0, medium => 0, hard => 0, total => 0);
+    
+    my $submissions = $user_data->{submitStats}{acSubmissionNum};
+    
+    # Debug: let's see what we're getting
+    # print "Debug: " . encode_json($submissions) . "\n";
+    
+    for my $submission (@$submissions) {
+        my $difficulty = lc($submission->{difficulty});
+        my $count = $submission->{count} || 0;
+        
+        if ($difficulty eq 'easy') {
+            $stats{easy} = $count;
+        } elsif ($difficulty eq 'medium') {
+            $stats{medium} = $count;
+        } elsif ($difficulty eq 'hard') {
+            $stats{hard} = $count;
+        }
+    }
+    
+    # Calculate total from the individual counts
+    $stats{total} = $stats{easy} + $stats{medium} + $stats{hard};
+    
+    return \%stats;
+}
