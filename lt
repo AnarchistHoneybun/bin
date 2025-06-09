@@ -7,6 +7,8 @@ use JSON;
 use Getopt::Long;
 use File::HomeDir;
 use Term::ANSIColor qw(colored);
+use Parallel::ForkManager;
+use File::Temp qw(tempdir);
 
 # Configuration
 my $config_file = File::HomeDir->my_home . "/.leetcode_tracker.json";
@@ -15,10 +17,12 @@ my $leetcode_api = "https://leetcode.com/graphql";
 # Command line options
 my $username_to_add;
 my $help;
+my $max_processes = 10; # Maximum concurrent processes
 
 GetOptions(
     'u|user=s' => \$username_to_add,
     'h|help'   => \$help,
+    'p|processes=i' => \$max_processes,
 ) or die "Error in command line arguments\n";
 
 if ($help) {
@@ -38,9 +42,10 @@ sub print_help {
 LeetCode Stats Tracker
 
 Usage:
-    $0              Display stats for all tracked users
-    $0 -u USERNAME  Add a new user to track
-    $0 -h           Show this help message
+    lt                  Display stats for all tracked users
+    lt -u USERNAME      Add a new user to track
+    lt -p NUM           Set max concurrent processes (default: 10)
+    lt -h               Show this help message
 
 The script stores tracked users in ~/.leetcode_tracker.json
 EOF
@@ -157,6 +162,42 @@ sub display_stats {
         exit 0;
     }
     
+    
+    # Create temporary directory for inter-process communication
+    my $temp_dir = tempdir(CLEANUP => 1);
+    
+    # Create fork manager
+    my $pm = Parallel::ForkManager->new($max_processes);
+    
+    # Hash to store results (will be populated by child processes)
+    my %results;
+    
+    # Data structure to collect results from child processes
+    $pm->run_on_finish(sub {
+        my ($pid, $exit_code, $ident, $exit_signal, $core_dump, $data_structure_reference) = @_;
+        
+        if (defined($data_structure_reference)) {
+            my $username = $data_structure_reference->{username};
+            $results{$username} = $data_structure_reference;
+        }
+    });
+    
+    # Launch parallel processes
+    for my $username (@$users) {
+        $pm->start and next; # fork here
+        
+        # Child process - fetch stats for this user
+        my $result = fetch_user_stats($username);
+        
+        my $child_result = {
+            username => $username,
+            result => $result
+        };
+        
+        # Return data to parent process
+        $pm->finish(0, $child_result);
+    }
+
     # Table header
     printf "%-20s %4s %6s %4s %5s\n",
         "Username",
@@ -166,8 +207,19 @@ sub display_stats {
         colored("Total", 'bold');
     print "-" x 45 . "\n";
     
+    # Wait for all children to complete
+    $pm->wait_all_children;
+
+    
     for my $username (@$users) {
-        my $result = fetch_user_stats($username);
+        my $user_result = $results{$username};
+        
+        unless ($user_result) {
+            printf "%-20s %s\n", $username, colored("No data received", 'red');
+            next;
+        }
+        
+        my $result = $user_result->{result};
         
         if ($result->{error}) {
             printf "%-20s %s\n", $username, colored("Error: $result->{error}", 'red');
@@ -193,9 +245,6 @@ sub parse_stats {
     my %stats = (easy => 0, medium => 0, hard => 0, total => 0);
     
     my $submissions = $user_data->{submitStats}{acSubmissionNum};
-    
-    # Debug: let's see what we're getting
-    # print "Debug: " . encode_json($submissions) . "\n";
     
     for my $submission (@$submissions) {
         my $difficulty = lc($submission->{difficulty});
