@@ -49,6 +49,21 @@ bi --title "Code" --padding 1 < input.txt # With title and custom padding
 
 **Styles:** `simple`, `double`, `rounded`, `thick`, `ascii`
 
+### `co` - Combinatorics Tool
+Analyze word letter frequencies and calculate combinatorial mathematics problems.
+
+**Usage:**
+```bash
+# Word analysis mode
+co word mississippi              # Analyze letter frequencies
+co word "hello world"            # Multiple words (non-letters ignored)
+
+# Calculator mode  
+co calc 5c3                      # Combinations: C(5,3) = 10
+co calc 4P2                      # Permutations: P(4,2) = 12
+co calc 10C4                     # Case insensitive
+```
+
 ## Dependencies
 
 **Perl modules required:**
