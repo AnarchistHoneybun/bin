@@ -1,0 +1,184 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use Getopt::Long;
+
+# Command line options
+my $help;
+
+GetOptions(
+    'h|help' => \$help,
+) or die "Error in command line arguments\n";
+
+if ($help) {
+    print_usage();
+    exit 0;
+}
+
+# Main entry point
+sub main {
+    my @args = @ARGV;
+    
+    if (@args == 0) {
+        print_usage();
+        exit 1;
+    }
+    
+    my $mode = shift @args;
+    
+    if ($mode eq 'word') {
+        word_mode(@args);
+    } elsif ($mode eq 'calc') {
+        calc_mode(@args);
+    } else {
+        print "Unknown mode: $mode\n";
+        print_usage();
+        exit 1;
+    }
+}
+
+sub word_mode {
+    my ($word) = @_;
+    
+    if (!defined $word) {
+        print "Error: No word provided\n";
+        exit 1;
+    }
+    
+    # Remove non-alphabetic characters and convert to lowercase
+    $word = lc($word);
+    $word =~ s/[^a-z]//g;
+    
+    my ($letter_count_ref, $order_ref) = count_letters_with_order($word);
+    my %letter_count = %$letter_count_ref;
+    my @first_appearance_order = @$order_ref;
+    my $total_letters = length($word);
+    my ($vowels, $consonants) = count_vowels_consonants(\%letter_count);
+    
+    # Output format as requested
+    print "$total_letters\n";
+    
+    # Print letter frequencies in order of first appearance
+    my @letter_pairs = map { "$_,$letter_count{$_}" } @first_appearance_order;
+    print join(" ", @letter_pairs) . "\n";
+    
+    print "$vowels $consonants\n";
+}
+
+sub calc_mode {
+    my ($expression) = @_;
+    
+    if (!defined $expression) {
+        print "Error: No calculation provided\n";
+        exit 1;
+    }
+    
+    # Parse nCr or nPr notation
+    if ($expression =~ /^(\d+)[cC](\d+)$/) {
+        my ($n, $r) = ($1, $2);
+        my $result = combination($n, $r);
+        print "$result\n";
+    } elsif ($expression =~ /^(\d+)[pP](\d+)$/) {
+        my ($n, $r) = ($1, $2);
+        my $result = permutation($n, $r);
+        print "$result\n";
+    } else {
+        print "Error: Invalid expression format. Use nCr or nPr notation.\n";
+        exit 1;
+    }
+}
+
+# Helper functions for word analysis
+sub count_letters_with_order {
+    my ($word) = @_;
+    my %count;
+    my @first_appearance_order;
+    my %seen;
+    
+    for my $char (split //, $word) {
+        $count{$char}++;
+        if (!$seen{$char}) {
+            push @first_appearance_order, $char;
+            $seen{$char} = 1;
+        }
+    }
+    
+    return (\%count, \@first_appearance_order);
+}
+
+sub count_letters {
+    my ($word) = @_;
+    my %count;
+    
+    for my $char (split //, $word) {
+        $count{$char}++;
+    }
+    
+    return %count;
+}
+
+sub count_vowels_consonants {
+    my ($letter_count_ref) = @_;
+    my %letter_count = %$letter_count_ref;
+    
+    my $vowels = 0;
+    my $consonants = 0;
+    my %vowel_set = map { $_ => 1 } qw(a e i o u);
+    
+    for my $letter (keys %letter_count) {
+        if ($vowel_set{$letter}) {
+            $vowels += $letter_count{$letter};
+        } else {
+            $consonants += $letter_count{$letter};
+        }
+    }
+    
+    return ($vowels, $consonants);
+}
+
+# Mathematical functions
+sub factorial {
+    my ($n) = @_;
+    return 1 if $n <= 1;
+    
+    my $result = 1;
+    for my $i (2..$n) {
+        $result *= $i;
+    }
+    return $result;
+}
+
+sub combination {
+    my ($n, $r) = @_;
+    
+    if ($r > $n || $r < 0 || $n < 0) {
+        print "Error: Invalid combination parameters (n=$n, r=$r)\n";
+        exit 1;
+    }
+    
+    return factorial($n) / (factorial($r) * factorial($n - $r));
+}
+
+sub permutation {
+    my ($n, $r) = @_;
+    
+    if ($r > $n || $r < 0 || $n < 0) {
+        print "Error: Invalid permutation parameters (n=$n, r=$r)\n";
+        exit 1;
+    }
+    
+    return factorial($n) / factorial($n - $r);
+}
+
+sub print_usage {
+    print "Usage:\n";
+    print "  co word <word>     - Analyze word letter frequency\n";
+    print "  co calc <expr>     - Calculate combinations/permutations\n";
+    print "\nExamples:\n";
+    print "  co word mississippi\n";
+    print "  co calc 4c3\n";
+    print "  co calc 5P2\n";
+}
+
+# Run the main function
+main();
