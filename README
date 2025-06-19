@@ -1,6 +1,6 @@
 # Personal Scripts
 
-A collection of useful command-line tools written in Perl.
+A collection of my custom command line utils.
 
 ## Scripts
 
@@ -15,7 +15,7 @@ lt -p 5               # Set max concurrent processes
 ```
 
 **Features:**
-- Parallel fetching for fast updates
+- Parallel fetching
 - Colored output (Easy/Medium/Hard)
 - Persistent user tracking in `~/.leetcode_tracker.json`
 
@@ -65,5 +65,5 @@ cpan LWP::UserAgent JSON File::HomeDir Term::ANSIColor Parallel::ForkManager HTM
 
 1. Clone this repository
 2. Copy scripts to a directory in your `$PATH` (e.g., `~/bin`)
-3. Make them executable: `chmod +x lt ju bi`
+3. Make them executable: `chmod +x *`
 4. Install Perl dependencies as needed
