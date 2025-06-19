@@ -69,7 +69,6 @@ co calc 10C4                     # Case insensitive
 **Perl modules required:**
 - `LWP::UserAgent`, `JSON`, `Getopt::Long`, `File::HomeDir`, `Term::ANSIColor`, `Parallel::ForkManager` (for `lt`)
 - `HTML::TreeBuilder`, `DateTime`, `DateTime::Format::Strptime` (for `ju`)
-- Standard modules only (for `bi`)
 
 **Install dependencies:**
 ```bash
