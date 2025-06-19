@@ -1,0 +1,69 @@
+# Personal Scripts
+
+A collection of useful command-line tools written in Perl.
+
+## Scripts
+
+### `lt` - LeetCode Stats Tracker
+Track and display LeetCode problem-solving statistics for multiple users.
+
+**Usage:**
+```bash
+lt                    # Display stats for all tracked users
+lt -u username        # Add a new user to track
+lt -p 5               # Set max concurrent processes
+```
+
+**Features:**
+- Parallel fetching for fast updates
+- Colored output (Easy/Medium/Hard)
+- Persistent user tracking in `~/.leetcode_tracker.json`
+
+### `ju` - Journal Update Tool
+Manage an HTML-based personal journal with automatic date organization.
+
+**Usage:**
+```bash
+ju -e "Fixed parser bug"                    # Add entry for today
+ju -e "Entry 1" -e "Entry 2"              # Multiple entries
+ju -d 2025-05-22 -e "Past entry"          # Specific date
+ju -e "New feature" -g                     # Add entry and git commit
+ju -l 5                                    # List last 5 days
+```
+
+**Features:**
+- Chronological organization (newest first)
+- Git integration (add, commit, push)
+- HTML structure preservation
+- Works with `~/mpw/journal.html`
+
+### `bi` - Box It
+Wrap text in decorative ASCII boxes with various styles.
+
+**Usage:**
+```bash
+echo "Hello World" | bi                    # Simple box
+bi --input file.txt --style double        # From file with double borders
+bi --title "Code" --padding 1 < input.txt # With title and custom padding
+```
+
+**Styles:** `simple`, `double`, `rounded`, `thick`, `ascii`
+
+## Dependencies
+
+**Perl modules required:**
+- `LWP::UserAgent`, `JSON`, `Getopt::Long`, `File::HomeDir`, `Term::ANSIColor`, `Parallel::ForkManager` (for `lt`)
+- `HTML::TreeBuilder`, `DateTime`, `DateTime::Format::Strptime` (for `ju`)
+- Standard modules only (for `bi`)
+
+**Install dependencies:**
+```bash
+cpan LWP::UserAgent JSON File::HomeDir Term::ANSIColor Parallel::ForkManager HTML::TreeBuilder DateTime DateTime::Format::Strptime
+```
+
+## Installation
+
+1. Clone this repository
+2. Copy scripts to a directory in your `$PATH` (e.g., `~/bin`)
+3. Make them executable: `chmod +x lt ju bi`
+4. Install Perl dependencies as needed
