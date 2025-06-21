@@ -82,6 +82,10 @@ sub calc_mode {
         my ($n, $r) = ($1, $2);
         my $result = permutation($n, $r);
         print "$result\n";
+    } elsif ($expression =~ /^(\d+)[cC][rR](\d+)$/) {
+        my ($n, $r) = ($1, $2);
+        my $result = combination_with_repetition($n, $r);
+        print "$result\n";
     } else {
         print "Error: Invalid expression format. Use nCr or nPr notation.\n";
         exit 1;
@@ -170,14 +174,30 @@ sub permutation {
     return factorial($n) / factorial($n - $r);
 }
 
+sub combination_with_repetition {
+    my ($n, $r) = @_;
+    
+    if ($n < 0 || $r < 0) {
+        print "Error: Invalid parameters for combination with repetition (n=$n, r=$r)\n";
+        exit 1;
+    }
+    
+    # Formula: C(n+r-1, r)
+    return combination($n + $r - 1, $r);
+}
+
 sub print_usage {
     print "Usage:\n";
-    print "  co word <word>     - Analyze word letter frequency\n";
-    print "  co calc <expr>     - Calculate combinations/permutations\n";
+    print "  co word <word>          - Analyze letter frequency of the given word\n";
+    print "  co calc <expr>          - Calculate combinations or permutations\n";
+    print "                           - Use 'nCr' for combinations\n";
+    print "                           - Use 'nPr' for permutations\n";
+    print "                           - Use 'nCRr' for combinations with repetition'\n";
     print "\nExamples:\n";
-    print "  co word mississippi\n";
-    print "  co calc 4c3\n";
-    print "  co calc 5P2\n";
+    print "  co word mississippi      - Analyzes the word 'mississippi'\n";
+    print "  co calc 4c3             - Calculates 4 choose 3 (combinations)\n";
+    print "  co calc 5P2             - Calculates 5 permute 2 (permutations)\n";
+    print "  co calc 5CR2            - Calculates combinations with repetition\n";
 }
 
 # Run the main function
