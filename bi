@@ -1,4 +1,12 @@
 #!/usr/bin/env perl
+#
+# bi
+#
+# Author: Raj Singh
+# License: MIT
+# Version: 1.0.1 (2025/08/23)
+#
+
 use strict;
 use warnings;
 use utf8;
