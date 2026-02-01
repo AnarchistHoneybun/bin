@@ -1,0 +1,204 @@
+#!/usr/bin/env python3
+
+import sys
+import os
+import subprocess
+import argparse
+from pathlib import Path
+
+TEMPLATE = """#include <bits/stdc++.h>
+using namespace std;
+#define rep(i, a, b) for(int i = a; i < (b); ++i)
+#define rrep(i, a, b) for (int i = a; i >= (b); --i)
+#define all(x) begin(x), end(x)
+#define sz(x) (int)(x).size()
+typedef long long ll;
+typedef pair<int, int> pii;
+typedef vector<int> vi;
+int main() {
+cin.tie(0)->sync_with_stdio(0);
+cin.exceptions(cin.failbit);
+}
+"""
+
+class Colors:
+    RED = '\033[91m'
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    RESET = '\033[0m'
+    BOLD = '\033[1m'
+
+def setup_problem(name):
+    """Create template files for a problem"""
+    cpp_file = f"{name}.cpp"
+    
+    # Create tests directory if it doesn't exist
+    tests_dir = Path("tests")
+    tests_dir.mkdir(exist_ok=True)
+    
+    in_file = tests_dir / f"{name}.in"
+    out_file = tests_dir / f"{name}.out"
+    
+    if os.path.exists(cpp_file):
+        print(f"Error: {cpp_file} already exists")
+        return False
+    
+    with open(cpp_file, 'w') as f:
+        f.write(TEMPLATE)
+    
+    in_file.touch()
+    out_file.touch()
+    
+    print(f"Created {cpp_file}, {in_file}, {out_file}")
+    return True
+
+def compile_cpp(cpp_file, fast_mode=False):
+    """Compile C++ file and return executable path"""
+    exe_path = cpp_file.rsplit('.', 1)[0]
+    
+    if fast_mode:
+        flags = ['-std=c++23', '-O2']
+    else:
+        flags = ['-std=c++23', '-Wall', '-Wconversion', '-Wfatal-errors', 
+                 '-g', '-fsanitize=undefined,address']
+    
+    cmd = ['g++'] + flags + [cpp_file, '-o', exe_path]
+    
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    
+    if result.returncode != 0:
+        print("Compilation failed:")
+        print(result.stderr)
+        return None
+    
+    return exe_path
+
+def run_program(exe_path, input_file):
+    """Run the executable with given input"""
+    # Use /usr/bin/time to measure execution time and memory
+    time_cmd = ['/usr/bin/time', '-f', 'Time: %es | Memory: %MKB', f'./{exe_path}']
+    
+    if input_file and os.path.exists(input_file):
+        with open(input_file, 'r') as f:
+            result = subprocess.run(time_cmd, 
+                                  stdin=f, 
+                                  capture_output=True, 
+                                  text=True)
+    else:
+        if not input_file:
+            print(f"{Colors.YELLOW}Waiting for stdin input...{Colors.RESET}")
+        result = subprocess.run(time_cmd, 
+                              capture_output=True, 
+                              text=True)
+    
+    if result.returncode != 0:
+        print("Runtime error:")
+        print(result.stderr)
+        return None
+    
+    # Extract timing info from stderr (that's where /usr/bin/time outputs)
+    timing_info = result.stderr.strip()
+    
+    return result.stdout, timing_info
+
+def show_diff(actual, expected):
+    """Display diff between actual and expected output"""
+    actual_lines = actual.rstrip('\n').split('\n')
+    expected_lines = expected.rstrip('\n').split('\n')
+    
+    max_lines = max(len(actual_lines), len(expected_lines))
+    has_diff = False
+    
+    for i in range(max_lines):
+        actual_line = actual_lines[i] if i < len(actual_lines) else ""
+        expected_line = expected_lines[i] if i < len(expected_lines) else ""
+        
+        if actual_line == expected_line:
+            print(actual_line)
+        else:
+            has_diff = True
+            print(f"{Colors.RED}{actual_line}{Colors.RESET} | {Colors.GREEN}{expected_line}{Colors.RESET}")
+    
+    return has_diff
+
+def main():
+    parser = argparse.ArgumentParser(description='Competitive Programming Handler')
+    parser.add_argument('-s', '--setup', metavar='NAME', help='Setup problem files')
+    parser.add_argument('-f', '--fast', action='store_true', help='Fast mode (O2 optimization)')
+    parser.add_argument('cpp_file', nargs='?', help='C++ source file')
+    parser.add_argument('input_file', nargs='?', help='Input file')
+    parser.add_argument('expected_file', nargs='?', help='Expected output file')
+    
+    args = parser.parse_args()
+    
+    if args.setup:
+        setup_problem(args.setup)
+        return
+    
+    if not args.cpp_file:
+        parser.print_help()
+        return
+    
+    if not os.path.exists(args.cpp_file):
+        print(f"Error: {args.cpp_file} not found")
+        return
+    
+    # Auto-detect input and output files
+    base_name = args.cpp_file.rsplit('.', 1)[0]
+    input_file = args.input_file
+    expected_file = args.expected_file
+    
+    if not input_file:
+        # Check tests subdirectory first, then current directory
+        auto_input_tests = f"tests/{base_name}.in"
+        auto_input = f"{base_name}.in"
+        if os.path.exists(auto_input_tests):
+            input_file = auto_input_tests
+        elif os.path.exists(auto_input):
+            input_file = auto_input
+    
+    if not expected_file:
+        # Check tests subdirectory first, then current directory
+        auto_expected_tests = f"tests/{base_name}.out"
+        auto_expected = f"{base_name}.out"
+        if os.path.exists(auto_expected_tests) and os.path.getsize(auto_expected_tests) > 0:
+            expected_file = auto_expected_tests
+        elif os.path.exists(auto_expected) and os.path.getsize(auto_expected) > 0:
+            expected_file = auto_expected
+    
+    # Compile
+    exe_path = compile_cpp(args.cpp_file, args.fast)
+    if not exe_path:
+        return
+    
+    # Run
+    result = run_program(exe_path, input_file)
+    if result is None:
+        return
+    
+    output, timing_info = result
+    
+    # Print timing info at the top
+    print(f"{Colors.BOLD}{timing_info}{Colors.RESET}")
+    print()
+    
+    # Compare or display
+    if expected_file:
+        with open(expected_file, 'r') as f:
+            expected = f.read()
+        
+        has_diff = show_diff(output, expected)
+        
+        if not has_diff:
+            print(f"\n{Colors.GREEN}{Colors.BOLD}Test passed{Colors.RESET}")
+        else:
+            print(f"\n{Colors.RED}{Colors.BOLD}Test failed{Colors.RESET}")
+    else:
+        print(output, end='')
+    
+    # Cleanup executable
+    if os.path.exists(exe_path):
+        os.remove(exe_path)
+
+if __name__ == '__main__':
+    main()
