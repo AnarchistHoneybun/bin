@@ -64,6 +64,20 @@ co calc 4P2                      # Permutations: P(4,2) = 12
 co calc 10C4                     # Case insensitive
 ```
 
+### `slum-cli` - Shadow Library Uptime Monitor
+Display grouped uptime status from `open-slum.org` (Uptime Kuma backend).
+
+**Usage:**
+```bash
+slum-cli                         # Show monitor status (uses cache when fresh)
+```
+
+**Features:**
+- Pulls status + heartbeat data from `open-slum.org/api/status-page/slum`
+- 5-minute local caching in `~/.cache/slum_cache.json`
+- Grouped output with UP/DOWN indicators, latency, and monitor URL
+- Configurable keyword/group filtering via script constants
+
 ## Dependencies
 
 **Perl modules required:**
